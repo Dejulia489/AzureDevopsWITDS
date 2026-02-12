@@ -1,0 +1,53 @@
+{
+  "name": "Azure DevOps Work Item Process Manager",
+  "image": "mcr.microsoft.com/devcontainers/javascript-node:22",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+
+  // Ports: React+Vite frontend (3000), Express.js backend (3001)
+  "forwardPorts": [3000, 3001],
+  "portsAttributes": {
+    "3000": {
+      "label": "Frontend (React + Vite)",
+      "onAutoForward": "notify"
+    },
+    "3001": {
+      "label": "Backend (Express.js)",
+      "onAutoForward": "notify"
+    }
+  },
+
+  // Install all dependencies (root, backend, frontend) after container creation
+  "postCreateCommand": "npm run install:all",
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit"
+        },
+        "eslint.workingDirectories": [
+          { "directory": "backend", "changeProcessCWD": true },
+          { "directory": "frontend", "changeProcessCWD": true }
+        ],
+        "files.eol": "\n",
+        "files.trimTrailingWhitespace": true,
+        "files.insertFinalNewline": true,
+        "javascript.updateImportsOnFileMove.enabled": "always",
+        "typescript.updateImportsOnFileMove.enabled": "always"
+      },
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "humao.rest-client",
+        "christian-kohler.npm-intellisense",
+        "christian-kohler.path-intellisense",
+        "Anthropic.claude-code"
+      ]
+    }
+  },
+
+  // Run as non-root user for security
+  "remoteUser": "node"
+}

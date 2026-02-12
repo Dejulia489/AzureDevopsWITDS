@@ -1,0 +1,16 @@
+{
+  "name": "azure-devops-process-manager-backend",
+  "version": "1.0.0",
+  "description": "Backend API for Azure DevOps Process Manager",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "node-fetch": "^3.3.2",
+    "uuid": "^11.1.0"
+  }
+}
