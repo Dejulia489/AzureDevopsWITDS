@@ -371,13 +371,13 @@ function WitTab({ comp, procs, processNames, notify, onRecompare }) {
   );
 }
 
-function FieldInfoPopover({ fieldPerProc, procs, processNames, onClose }) {
+function FieldInfoPopover({ fieldPerProc, procs, processNames, onClose, style }) {
   // Show field properties from the first process that has it
   const firstPid = procs.find((p) => fieldPerProc[p.processId])?.processId;
   if (!firstPid) return null;
   const info = fieldPerProc[firstPid];
   return (
-    <div className="field-popover" onClick={(e) => e.stopPropagation()}>
+    <div className="field-popover" style={style} onClick={(e) => e.stopPropagation()}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
         <strong style={{ fontSize: 13 }}>{info.name}</strong>
         <button className="info-icon" onClick={onClose} title="Close" style={{ border: 'none', background: 'none', fontSize: 14, cursor: 'pointer' }}>&times;</button>
@@ -413,6 +413,105 @@ function FieldInfoPopover({ fieldPerProc, procs, processNames, onClose }) {
   );
 }
 
+const FIELD_TYPES = [
+  { value: 'string', label: 'String' },
+  { value: 'integer', label: 'Integer' },
+  { value: 'double', label: 'Double' },
+  { value: 'dateTime', label: 'DateTime' },
+  { value: 'plainText', label: 'Plain Text' },
+  { value: 'html', label: 'HTML' },
+  { value: 'boolean', label: 'Boolean' },
+  { value: 'identity', label: 'Identity' },
+];
+
+function AddFieldModal({ fieldInfo, targetProc, witName, witRefName, processNames, onClose, onConfirm, actionLoading }) {
+  const [form, setForm] = useState({
+    name: fieldInfo.name || '',
+    referenceName: fieldInfo.referenceName || '',
+    type: fieldInfo.type || 'string',
+    description: fieldInfo.description || '',
+    required: fieldInfo.required || false,
+    readOnly: fieldInfo.readOnly || false,
+  });
+
+  const handleSubmit = () => {
+    onConfirm({
+      orgField: {
+        name: form.name,
+        referenceName: form.referenceName,
+        type: form.type,
+        description: form.description,
+        usage: 'workItem',
+        readOnly: form.readOnly,
+      },
+      witField: {
+        referenceName: form.referenceName,
+        required: form.required,
+        readOnly: form.readOnly,
+      },
+    });
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>Add Field to {witName}</h2>
+          <button className="modal-close" onClick={onClose}>&times;</button>
+        </div>
+        <div className="modal-body">
+          <p className="text-sm text-secondary" style={{ marginBottom: 12 }}>
+            This field does not exist in the target organization. It will be created at the org level first, then added to the work item type.
+          </p>
+          <div className="text-sm" style={{ marginBottom: 12 }}>
+            <strong>Target:</strong> {processNames[targetProc.processId]}
+          </div>
+          <div className="form-group">
+            <label>Name</label>
+            <input value={form.name} readOnly style={{ background: '#f3f2f1' }} />
+          </div>
+          <div className="form-group">
+            <label>Reference Name</label>
+            <input value={form.referenceName} readOnly style={{ background: '#f3f2f1' }} />
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Type</label>
+              <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })}>
+                {FIELD_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="form-group">
+            <label>Description</label>
+            <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Optional description" />
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input type="checkbox" checked={form.required} onChange={(e) => setForm({ ...form, required: e.target.checked })} style={{ width: 'auto' }} />
+                Required
+              </label>
+            </div>
+            <div className="form-group">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <input type="checkbox" checked={form.readOnly} onChange={(e) => setForm({ ...form, readOnly: e.target.checked })} style={{ width: 'auto' }} />
+                Read Only
+              </label>
+            </div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={actionLoading}>
+            {actionLoading ? <><span className="spinner" /> Adding...</> : 'Confirm & Add'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FieldsTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecompare }) {
   const { fields } = comp;
   const [actionLoading, setActionLoading] = useState(false);
@@ -422,6 +521,8 @@ function FieldsTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
   const [addFieldTarget, setAddFieldTarget] = useState(''); // connectionId::processId
   const [addFieldRef, setAddFieldRef] = useState(''); // selected org field referenceName
   const [openInfoField, setOpenInfoField] = useState(null); // "witName::fieldName" key for open popover
+  const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 }); // fixed position for popover
+  const [addFieldModal, setAddFieldModal] = useState(null); // { targetProc, witName, fieldName, fieldInfo } for the modal
 
   if (!fields?.byWorkItemType) return <div className="card"><p className="text-secondary">No field data available.</p></div>;
 
@@ -530,14 +631,39 @@ function FieldsTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
     const witData = fields.byWorkItemType[witName];
     const witRefName = witData?.witRefNames?.[targetProc.processId];
     if (!witRefName) { notify('error', `Cannot find WIT reference name for ${witName}`); return; }
-    // Get the field refname from a process that has it
+    // Get the field data from a process that has it
     const fieldInfo = witData.byField?.[fieldName];
     const sourceEntry = fieldInfo && Object.values(fieldInfo)[0];
     if (!sourceEntry) { notify('error', `Cannot find field data for ${fieldName}`); return; }
+    // Try adding directly first (works when field exists at org level)
     setActionLoading(true);
     try {
       await editor.addField(targetProc.connectionId, targetProc.processId, witRefName, { referenceName: sourceEntry.referenceName });
       notify('success', `Added "${fieldName}" to ${witName} in ${processNames[targetProc.processId]}`);
+      await onRecompare();
+    } catch (err) {
+      // If field doesn't exist at org level, show the modal for org-level creation
+      if (err.message && (err.message.includes('TF51535') || err.message.includes('does not exist'))) {
+        setAddFieldModal({ targetProc, witName, witRefName, fieldName, fieldInfo: sourceEntry });
+      } else {
+        notify('error', `Failed to add field: ${err.message}`);
+      }
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleConfirmAddField = async ({ orgField, witField }) => {
+    if (!addFieldModal) return;
+    const { targetProc, witName, witRefName, fieldName } = addFieldModal;
+    setActionLoading(true);
+    try {
+      // Step 1: Create field at org level (409/already-exists = fine)
+      await editor.createOrgField(targetProc.connectionId, orgField);
+      // Step 2: Add field to the WIT
+      await editor.addField(targetProc.connectionId, targetProc.processId, witRefName, witField);
+      notify('success', `Added "${fieldName}" to ${witName} in ${processNames[targetProc.processId]}`);
+      setAddFieldModal(null);
       await onRecompare();
     } catch (err) {
       notify('error', `Failed to add field: ${err.message}`);
@@ -666,23 +792,38 @@ function FieldsTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
 
                       return (
                         <tr key={fieldName} className={hasDiff ? 'diff-changed' : hasLayoutMismatch ? 'diff-changed' : ''}>
-                          <td className="text-mono text-sm" style={{ position: 'relative' }}>
+                          <td className="text-mono text-sm">
                             <div className="flex items-center gap-2">
                               <strong>{fieldName}</strong>
                               <span
                                 className="info-icon"
                                 title="View field details"
-                                onClick={() => setOpenInfoField(openInfoField === `${witName}::${fieldName}` ? null : `${witName}::${fieldName}`)}
+                                onClick={(e) => {
+                                  if (openInfoField === `${witName}::${fieldName}`) {
+                                    setOpenInfoField(null);
+                                  } else {
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    const top = rect.bottom + 4;
+                                    const left = rect.left;
+                                    // Keep popover within viewport
+                                    setPopoverPos({
+                                      top: top + 300 > window.innerHeight ? Math.max(8, rect.top - 304) : top,
+                                      left: left + 360 > window.innerWidth ? Math.max(8, window.innerWidth - 368) : left,
+                                    });
+                                    setOpenInfoField(`${witName}::${fieldName}`);
+                                  }
+                                }}
                               >i</span>
                             </div>
                             {openInfoField === `${witName}::${fieldName}` && (
                               <>
-                                <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setOpenInfoField(null)} />
+                                <div style={{ position: 'fixed', inset: 0, zIndex: 1000 }} onClick={() => setOpenInfoField(null)} />
                                 <FieldInfoPopover
                                   fieldPerProc={fieldPerProc}
                                   procs={procs}
                                   processNames={processNames}
                                   onClose={() => setOpenInfoField(null)}
+                                  style={{ top: popoverPos.top, left: popoverPos.left }}
                                 />
                               </>
                             )}
@@ -775,6 +916,19 @@ function FieldsTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
           </CollapsibleSection>
         );
       })}
+
+      {addFieldModal && (
+        <AddFieldModal
+          fieldInfo={addFieldModal.fieldInfo}
+          targetProc={addFieldModal.targetProc}
+          witName={addFieldModal.witName}
+          witRefName={addFieldModal.witRefName}
+          processNames={processNames}
+          onClose={() => setAddFieldModal(null)}
+          onConfirm={handleConfirmAddField}
+          actionLoading={actionLoading}
+        />
+      )}
     </div>
   );
 }

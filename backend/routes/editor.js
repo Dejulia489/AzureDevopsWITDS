@@ -677,6 +677,34 @@ router.post('/apply-batch', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Direct Edit Endpoints - Organization-Level Fields
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /:connectionId/org-field - Create a field at the organization level.
+ * Body: { name, referenceName, type, description, usage, readOnly }
+ * 409 Conflict (field already exists) is treated as success.
+ */
+router.post('/:connectionId/org-field', async (req, res) => {
+  try {
+    const { connectionId } = req.params;
+    console.log(`[editor/createOrgField] connectionId=${connectionId} body=${JSON.stringify(req.body)}`);
+    const { service } = await createService(connectionId);
+    const result = await service.createOrganizationField(req.body);
+    res.status(201).json(result);
+  } catch (err) {
+    if (isConflict(err) || (err.message && err.message.includes('VS402803'))) {
+      // Field already exists at org level (409 or VS402803) — treat as success
+      console.log(`[editor/createOrgField] Field already exists, continuing`);
+      res.json({ alreadyExists: true, referenceName: req.body.referenceName });
+    } else {
+      console.error(`[editor/createOrgField] FAILED: ${err.message}`);
+      res.status(err.statusCode || 500).json({ error: err.message });
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Direct Edit Endpoints - Work Item Types
 // ---------------------------------------------------------------------------
 

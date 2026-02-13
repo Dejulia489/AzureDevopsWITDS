@@ -57,6 +57,8 @@ export const editor = {
   deleteWorkItemType: (connId, procId, witRefName) =>
     request(`/editor/${connId}/${procId}/workitemtype/${witRefName}`, { method: 'DELETE' }),
 
+  createOrgField: (connId, body) =>
+    request(`/editor/${connId}/org-field`, { method: 'POST', body: JSON.stringify(body) }),
   addField: (connId, procId, witRefName, body) =>
     request(`/editor/${connId}/${procId}/${witRefName}/field`, { method: 'POST', body: JSON.stringify(body) }),
   updateField: (connId, procId, witRefName, fieldRefName, body) =>

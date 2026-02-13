@@ -257,6 +257,20 @@ class AzureDevOpsService {
     return this._fetch(url);
   }
 
+  /**
+   * Create a new field at the organization level.
+   * @param {object} body - Field creation payload (name, referenceName, type, description, usage, readOnly)
+   * @returns {Promise<object>} Created field
+   * @see https://learn.microsoft.com/en-us/rest/api/azure/devops/wit/fields/create
+   */
+  async createOrganizationField(body) {
+    const url = `${this._getApiBase()}/_apis/wit/fields?api-version=7.1`;
+    return this._fetch(url, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // State endpoints  (api-version=7.1-preview.1)
   // ---------------------------------------------------------------------------
