@@ -112,10 +112,11 @@ function compareFields(processesData) {
       }
     }
 
-    // Build a layout control index: fieldRefName -> { groupId, visible, controlType, label }
+    // Build a layout control index: fieldRefName -> { groupId, visible, controlType, label, pageLabel }
     // for each process, so we can cross-reference field visibility on the form.
     const layoutIndex = {}; // processId -> { fieldRefName -> controlInfo }
     const layoutGroups = {}; // processId -> [{ groupId, label }]
+    const layoutPagesSet = new Set(); // unique page labels across all processes
     for (const proc of processesData) {
       const layout = (proc.data.layouts || {})[witRef];
       const index = {};
@@ -124,6 +125,8 @@ function compareFields(processesData) {
         const AVOID_CONTROL_TYPES = new Set(['HtmlFieldControl', 'LinksControl', 'DeploymentsControl', 'WorkItemLogControl']);
         for (const page of layout.pages) {
           if (page.isContribution || ['history', 'links', 'attachments'].includes(page.pageType)) continue;
+          const pageLabel = page.label || page.id || 'Unknown';
+          layoutPagesSet.add(pageLabel);
           for (const section of page.sections || []) {
             for (const group of section.groups || []) {
               if (!group.id) continue;
@@ -141,6 +144,7 @@ function compareFields(processesData) {
                     visible: ctrl.visible !== false,
                     controlType: ctrl.controlType || null,
                     label: ctrl.label || '',
+                    pageLabel,
                   };
                 }
               }
@@ -151,6 +155,7 @@ function compareFields(processesData) {
       layoutIndex[proc.processId] = index;
       layoutGroups[proc.processId] = groups;
     }
+    const layoutPages = [...layoutPagesSet].sort();
 
     // Build byField map and allFieldNames, both keyed by display name
     const byField = {};
@@ -177,6 +182,7 @@ function compareFields(processesData) {
           layoutGroupLabel: ctrlInfo ? ctrlInfo.groupLabel : null,
           layoutControlType: ctrlInfo ? ctrlInfo.controlType : null,
           layoutLabel: ctrlInfo ? ctrlInfo.label : '',
+          layoutPageLabel: ctrlInfo ? ctrlInfo.pageLabel : null,
         };
       }
 
@@ -264,6 +270,7 @@ function compareFields(processesData) {
       byField,
       witRefNames,
       layoutGroups,
+      layoutPages,
     };
   }
 

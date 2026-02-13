@@ -523,6 +523,7 @@ function FieldsTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
   const [openInfoField, setOpenInfoField] = useState(null); // "witName::fieldName" key for open popover
   const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 }); // fixed position for popover
   const [addFieldModal, setAddFieldModal] = useState(null); // { targetProc, witName, fieldName, fieldInfo } for the modal
+  const [excludedPages, setExcludedPages] = useState(new Set()); // pages to exclude from view
 
   if (!fields?.byWorkItemType) return <div className="card"><p className="text-secondary">No field data available.</p></div>;
 
@@ -711,15 +712,77 @@ function FieldsTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
     return allOrgFields.filter((f) => !existingRefs.has(f.referenceName));
   };
 
+  // Collect all unique page labels across all WITs for the page filter dropdown
+  const allPages = useMemo(() => {
+    const pages = new Set();
+    for (const witData of Object.values(fields.byWorkItemType)) {
+      for (const p of witData.layoutPages || []) pages.add(p);
+    }
+    return [...pages].sort();
+  }, [fields]);
+
   return (
     <div>
+      {allPages.length > 0 && (
+        <div className="flex items-center gap-2 mb-4" style={{ flexWrap: 'wrap' }}>
+          <span className="text-sm text-secondary" style={{ whiteSpace: 'nowrap' }}>Exclude pages:</span>
+          {allPages.map((p) => (
+            <label key={p} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer' }}>
+              <input type="checkbox" checked={excludedPages.has(p)} onChange={() => {
+                setExcludedPages((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(p)) next.delete(p); else next.add(p);
+                  return next;
+                });
+              }} />
+              {p}
+            </label>
+          ))}
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer', fontStyle: 'italic' }}>
+            <input type="checkbox" checked={excludedPages.has('__none__')} onChange={() => {
+              setExcludedPages((prev) => {
+                const next = new Set(prev);
+                if (next.has('__none__')) next.delete('__none__'); else next.add('__none__');
+                return next;
+              });
+            }} />
+            Not on Form
+          </label>
+          {excludedPages.size > 0 && (
+            <button className="btn btn-sm" onClick={() => setExcludedPages(new Set())} style={{ fontSize: 11, padding: '2px 8px' }}>Clear</button>
+          )}
+        </div>
+      )}
+
       {witNames.map((witName) => {
         const witData = fields.byWorkItemType[witName];
         const diffs = witData.differences || [];
         const byField = witData.byField || {};
         if (filterDiffsOnly && diffs.length === 0) return null;
 
-        const fieldsToShow = (filterDiffsOnly ? diffs.map((d) => d.fieldName) : (witData.all || [])).slice().sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+        let fieldsToShow = (filterDiffsOnly ? diffs.map((d) => d.fieldName) : (witData.all || [])).slice().sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+        // Apply page exclusion filter
+        if (excludedPages.size > 0) {
+          fieldsToShow = fieldsToShow.filter((fieldName) => {
+            const fieldPerProc = byField[fieldName] || {};
+            const fieldPages = new Set();
+            for (const info of Object.values(fieldPerProc)) {
+              if (info.layoutPageLabel) fieldPages.add(info.layoutPageLabel);
+            }
+            // Field is not on any form page
+            if (fieldPages.size === 0) {
+              return !excludedPages.has('__none__');
+            }
+            // Exclude if ALL of the field's pages are in the excluded set
+            for (const pg of fieldPages) {
+              if (!excludedPages.has(pg)) return true;
+            }
+            return false;
+          });
+        }
+
+        if (fieldsToShow.length === 0) return null;
         const isAddFieldOpen = addFieldWit === witName;
         const availableOrgFields = isAddFieldOpen ? getAvailableOrgFields(witName) : [];
 
