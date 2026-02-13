@@ -127,12 +127,11 @@ function compareFields(processesData) {
           for (const section of page.sections || []) {
             for (const group of section.groups || []) {
               if (!group.id) continue;
-              // Collect groups suitable for field controls
-              const controls = group.controls || [];
-              const isSpecialOnly = controls.length > 0 && controls.every((c) => c.controlType && AVOID_CONTROL_TYPES.has(c.controlType));
-              if (!group.isContribution && !isSpecialOnly) {
+              // Collect all non-contribution groups for the user-facing dropdown
+              if (!group.isContribution) {
                 groups.push({ groupId: group.id, label: group.label || group.id });
               }
+              const controls = group.controls || [];
               // Index each control by field referenceName
               for (const ctrl of controls) {
                 if (ctrl.id) {
@@ -218,6 +217,30 @@ function compareFields(processesData) {
           const allSame = serialized.every((v) => v === serialized[0]);
           if (!allSame) {
             propertyDifferences.push({ property: prop, values });
+          }
+        }
+      }
+
+      // Also compare layout visibility across processes where the field is present
+      if (presentIn.length > 1) {
+        const onLayoutValues = {};
+        const visibleValues = {};
+        for (const pid of presentIn) {
+          const fieldRef = procFields[pid].referenceName || fieldRefName;
+          const ctrlInfo = layoutIndex[pid]?.[fieldRef];
+          onLayoutValues[pid] = !!ctrlInfo;
+          visibleValues[pid] = ctrlInfo ? ctrlInfo.visible : false;
+        }
+        const onLayoutSerialized = presentIn.map((pid) => JSON.stringify(onLayoutValues[pid]));
+        if (!onLayoutSerialized.every((v) => v === onLayoutSerialized[0])) {
+          propertyDifferences.push({ property: 'onLayout', values: onLayoutValues });
+        }
+        // Only compare layoutVisible when all processes have the field on the layout
+        const allOnLayout = presentIn.every((pid) => onLayoutValues[pid]);
+        if (allOnLayout) {
+          const visibleSerialized = presentIn.map((pid) => JSON.stringify(visibleValues[pid]));
+          if (!visibleSerialized.every((v) => v === visibleSerialized[0])) {
+            propertyDifferences.push({ property: 'layoutVisible', values: visibleValues });
           }
         }
       }
@@ -462,19 +485,24 @@ function compareWorkItemTypeBehaviors(processesData) {
 
       const hasDiff = missingFrom.length > 0;
 
-      // Also compare property values across present processes
-      let propsDiffer = false;
+      // Compare meaningful properties, ignoring url fields that contain process-specific GUIDs
+      const COMPARE_PROPS = ['isDefault', 'isLegacyDefault'];
+      const propertyDifferences = [];
       if (presentIn.length > 1) {
-        const serialized = presentIn.map((pid) => JSON.stringify(procRefs[pid]));
-        propsDiffer = !serialized.every((v) => v === serialized[0]);
+        for (const prop of COMPARE_PROPS) {
+          const values = {};
+          for (const pid of presentIn) {
+            values[pid] = procRefs[pid][prop] !== undefined ? procRefs[pid][prop] : null;
+          }
+          const serialized = presentIn.map((pid) => JSON.stringify(values[pid]));
+          if (!serialized.every((v) => v === serialized[0])) {
+            propertyDifferences.push({ property: prop, values });
+          }
+        }
       }
 
-      if (hasDiff || propsDiffer) {
-        const values = {};
-        for (const pid of processIds) {
-          values[pid] = procRefs[pid] || null;
-        }
-        differences.push({ behaviorId, values });
+      if (hasDiff || propertyDifferences.length > 0) {
+        differences.push({ behaviorId, presentIn, missingFrom, propertyDifferences });
       }
     }
 

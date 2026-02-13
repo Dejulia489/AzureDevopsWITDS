@@ -742,6 +742,24 @@ class AzureDevOpsService {
   }
 
   /**
+   * Edit an existing field control in a group (update properties like visible, label, etc.).
+   * Uses PATCH which updates the control in place without moving it.
+   * @param {string} processId   - Process GUID
+   * @param {string} witRefName  - Work item type reference name
+   * @param {string} groupId     - Group ID
+   * @param {string} controlId   - Control ID (usually the field referenceName)
+   * @param {object} body        - Properties to update (visible, label, readOnly, etc.)
+   * @returns {Promise<object>} Updated control
+   */
+  async editControl(processId, witRefName, groupId, controlId, body) {
+    const url = `${this._getApiBase()}/_apis/work/processes/${processId}/workItemTypes/${encodeURIComponent(witRefName)}/layout/groups/${encodeURIComponent(groupId)}/controls/${encodeURIComponent(controlId)}?api-version=7.1`;
+    return this._fetch(url, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    });
+  }
+
+  /**
    * Remove a field control from a group on the layout.
    * @param {string} processId   - Process GUID
    * @param {string} witRefName  - Work item type reference name

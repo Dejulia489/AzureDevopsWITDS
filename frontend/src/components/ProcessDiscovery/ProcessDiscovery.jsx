@@ -7,7 +7,6 @@ export default function ProcessDiscovery({
   onProcessPulled,
   onProcessRemoved,
   onCompare,
-  onEdit,
   notify,
 }) {
   // --- Connection & process list state ---
@@ -324,15 +323,6 @@ export default function ProcessDiscovery({
                             )}
                           </button>
 
-                          {/* Edit button -- only enabled when data has been pulled */}
-                          <button
-                            className="btn btn-sm"
-                            disabled={!pulled}
-                            onClick={() => pulled && onEdit(pulled)}
-                            title={pulled ? 'Edit process' : 'Pull the process first'}
-                          >
-                            Edit
-                          </button>
                         </div>
                       </td>
                     </tr>
@@ -420,12 +410,6 @@ export default function ProcessDiscovery({
 
                     {/* Right side: actions */}
                     <div className="btn-group" style={{ flexShrink: 0 }}>
-                      <button
-                        className="btn btn-sm"
-                        onClick={() => onEdit(entry)}
-                      >
-                        Edit
-                      </button>
                       <button
                         className="btn btn-danger btn-sm"
                         onClick={() => handleClearPulled(key)}

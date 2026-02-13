@@ -930,6 +930,23 @@ router.put('/:connectionId/:processId/:witRefName/control/:groupId', async (req,
 });
 
 /**
+ * PATCH /:connectionId/:processId/:witRefName/control/:groupId/:controlId - Edit a control in place (e.g. toggle visible).
+ */
+router.patch('/:connectionId/:processId/:witRefName/control/:groupId/:controlId', async (req, res) => {
+  try {
+    const { connectionId, processId, witRefName, groupId, controlId } = req.params;
+    console.log(`[editor/editControl] witRefName=${witRefName} groupId=${groupId} controlId=${controlId} body=${JSON.stringify(req.body)}`);
+    const { service } = await createService(connectionId);
+    const result = await service.editControl(processId, witRefName, groupId, controlId, req.body);
+    await refreshTempStorage(service, connectionId, processId);
+    res.json(result);
+  } catch (err) {
+    console.error(`[editor/editControl] FAILED: ${err.message}`);
+    res.status(err.statusCode || 500).json({ error: err.message });
+  }
+});
+
+/**
  * DELETE /:connectionId/:processId/:witRefName/control/:groupId/:controlId - Remove a control from layout.
  */
 router.delete('/:connectionId/:processId/:witRefName/control/:groupId/:controlId', async (req, res) => {

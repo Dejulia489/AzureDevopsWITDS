@@ -80,6 +80,8 @@ export const editor = {
 
   addControl: (connId, procId, witRefName, groupId, body) =>
     request(`/editor/${connId}/${procId}/${witRefName}/control/${encodeURIComponent(groupId)}`, { method: 'PUT', body: JSON.stringify(body) }),
+  editControl: (connId, procId, witRefName, groupId, controlId, body) =>
+    request(`/editor/${connId}/${procId}/${witRefName}/control/${encodeURIComponent(groupId)}/${encodeURIComponent(controlId)}`, { method: 'PATCH', body: JSON.stringify(body) }),
   removeControl: (connId, procId, witRefName, groupId, controlId) =>
     request(`/editor/${connId}/${procId}/${witRefName}/control/${encodeURIComponent(groupId)}/${encodeURIComponent(controlId)}`, { method: 'DELETE' }),
 };

@@ -3,14 +3,11 @@ import { connections as connectionsApi, processes } from './services/api';
 import ConnectionManager from './components/ConnectionManager/ConnectionManager';
 import ProcessDiscovery from './components/ProcessDiscovery/ProcessDiscovery';
 import ProcessComparison from './components/ProcessComparison/ProcessComparison';
-import ProcessEditor from './components/ProcessEditor/ProcessEditor';
-import ChangePreview from './components/ChangePreview/ChangePreview';
 
 const TABS = [
   { id: 'connections', label: 'Connections' },
   { id: 'discovery', label: 'Discovery' },
   { id: 'comparison', label: 'Comparison' },
-  { id: 'editor', label: 'Editor' },
 ];
 
 export default function App() {
@@ -18,7 +15,6 @@ export default function App() {
   const [connections, setConnections] = useState([]);
   const [pulledProcesses, setPulledProcesses] = useState([]);
   const [comparisonResult, setComparisonResult] = useState(null);
-  const [pendingChanges, setPendingChanges] = useState(null);
   const [notification, setNotification] = useState(null);
 
   const notify = useCallback((type, message) => {
@@ -74,15 +70,6 @@ export default function App() {
     setActiveTab('comparison');
   }, []);
 
-  const handleEditProcess = useCallback((processData) => {
-    setPendingChanges({ connectionId: processData.connectionId, processId: processData.process.typeId, processData });
-    setActiveTab('editor');
-  }, []);
-
-  const handleApplyChanges = useCallback((changes) => {
-    setPendingChanges(changes);
-  }, []);
-
   return (
     <div className="app">
       <header className="app-header">
@@ -122,7 +109,6 @@ export default function App() {
             onProcessPulled={handleProcessPulled}
             onProcessRemoved={handleProcessRemoved}
             onCompare={handleComparisonDone}
-            onEdit={handleEditProcess}
             notify={notify}
           />
         )}
@@ -131,17 +117,6 @@ export default function App() {
             comparisonResult={comparisonResult}
             pulledProcesses={pulledProcesses}
             onCompare={handleComparisonDone}
-            onProcessPulled={handleProcessPulled}
-            onEdit={handleEditProcess}
-            notify={notify}
-          />
-        )}
-        {activeTab === 'editor' && (
-          <ProcessEditor
-            pendingChanges={pendingChanges}
-            pulledProcesses={pulledProcesses}
-            connections={connections}
-            onApply={handleApplyChanges}
             onProcessPulled={handleProcessPulled}
             notify={notify}
           />

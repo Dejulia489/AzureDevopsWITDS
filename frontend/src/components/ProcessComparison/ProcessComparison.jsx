@@ -35,9 +35,9 @@ function CollapsibleSection({ title, badge, defaultOpen, children }) {
   );
 }
 
-export default function ProcessComparison({ comparisonResult, pulledProcesses, onCompare, onProcessPulled, onEdit, notify }) {
+export default function ProcessComparison({ comparisonResult, pulledProcesses, onCompare, onProcessPulled, notify }) {
   const [activeTab, setActiveTab] = useState('Summary');
-  const [filterDiffsOnly, setFilterDiffsOnly] = useState(false);
+  const [filterDiffsOnly, setFilterDiffsOnly] = useState(true);
   const [recomparing, setRecomparing] = useState(false);
 
   if (!comparisonResult) {
@@ -103,6 +103,7 @@ export default function ProcessComparison({ comparisonResult, pulledProcesses, o
           {summary.fieldDifferences > 0 && <span className="badge badge-warning">{summary.fieldDifferences} Field diffs</span>}
           {summary.stateDifferences > 0 && <span className="badge badge-warning">{summary.stateDifferences} State diffs</span>}
           {summary.behaviorDifferences > 0 && <span className="badge badge-warning">{summary.behaviorDifferences} Behavior diffs</span>}
+          {summary.witBehaviorDifferences > 0 && <span className="badge badge-warning">{summary.witBehaviorDifferences} WIT Behavior diffs</span>}
           {summary.totalDifferences === 0 && <span className="badge badge-success">All processes match!</span>}
         </div>
       </div>
@@ -175,6 +176,12 @@ function SummaryTab({ comp, procs, processNames }) {
               <td>{behaviors.all.length}</td>
               <td>{behaviors.differences.length}</td>
               <td>{behaviors.differences.length === 0 ? <span className="badge badge-success">Match</span> : <span className="badge badge-danger">{behaviors.differences.length} diffs</span>}</td>
+            </tr>
+            <tr>
+              <td><strong>WIT Behaviors</strong></td>
+              <td>--</td>
+              <td>{summary.witBehaviorDifferences}</td>
+              <td>{summary.witBehaviorDifferences === 0 ? <span className="badge badge-success">Match</span> : <span className="badge badge-danger">{summary.witBehaviorDifferences} diffs</span>}</td>
             </tr>
           </tbody>
         </table>
@@ -396,18 +403,37 @@ function FieldsTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
   const [showGroupPicker, setShowGroupPicker] = useState(null); // key = `${processId}::${witName}::${fieldName}`
   const [selectedGroup, setSelectedGroup] = useState('');
 
-  const handleHideFromLayout = async (proc, witName, fieldName, fieldInfo) => {
+  const handleToggleVisibility = async (proc, witName, fieldName, fieldInfo) => {
     const witData = fields.byWorkItemType[witName];
     const witRefName = witData?.witRefNames?.[proc.processId];
     if (!witRefName) { notify('error', `Cannot find WIT reference name for ${witName}`); return; }
-    if (!fieldInfo.layoutGroupId) { notify('error', 'Field has no layout control to remove'); return; }
+    if (!fieldInfo.layoutGroupId) { notify('error', 'Field has no layout control to toggle'); return; }
+    const newVisible = !fieldInfo.layoutVisible;
     setActionLoading(true);
     try {
-      await editor.removeControl(proc.connectionId, proc.processId, witRefName, fieldInfo.layoutGroupId, fieldInfo.referenceName);
-      notify('success', `Removed "${fieldName}" from form layout in ${proc.processName}`);
+      await editor.editControl(proc.connectionId, proc.processId, witRefName, fieldInfo.layoutGroupId, fieldInfo.referenceName, {
+        visible: newVisible,
+      });
+      notify('success', `${newVisible ? 'Showing' : 'Hiding'} "${fieldName}" on form in ${proc.processName}`);
       await onRecompare();
     } catch (err) {
-      notify('error', `Failed to remove from layout: ${err.message}`);
+      notify('error', `Failed to toggle visibility: ${err.message}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRemoveField = async (proc, witName, fieldName, fieldInfo) => {
+    const witData = fields.byWorkItemType[witName];
+    const witRefName = witData?.witRefNames?.[proc.processId];
+    if (!witRefName) { notify('error', `Cannot find WIT reference name for ${witName}`); return; }
+    setActionLoading(true);
+    try {
+      await editor.removeField(proc.connectionId, proc.processId, witRefName, fieldInfo.referenceName);
+      notify('success', `Removed "${fieldName}" from ${witName} in ${proc.processName}`);
+      await onRecompare();
+    } catch (err) {
+      notify('error', `Failed to remove field: ${err.message}`);
     } finally {
       setActionLoading(false);
     }
@@ -512,7 +538,7 @@ function FieldsTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
         const byField = witData.byField || {};
         if (filterDiffsOnly && diffs.length === 0) return null;
 
-        const fieldsToShow = filterDiffsOnly ? diffs.map((d) => d.fieldName) : (witData.all || []);
+        const fieldsToShow = (filterDiffsOnly ? diffs.map((d) => d.fieldName) : (witData.all || [])).slice().sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
         const isAddFieldOpen = addFieldWit === witName;
         const availableOrgFields = isAddFieldOpen ? getAvailableOrgFields(witName) : [];
 
@@ -601,11 +627,17 @@ function FieldsTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
                                   </div>
                                 ) : (
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    {info.onLayout
+                                    {info.onLayout && info.layoutVisible
                                       ? <>
                                           <span className="badge badge-success">On Form</span>
                                           <span className="text-sm text-secondary">{info.layoutGroupLabel}</span>
-                                          <button className="btn btn-sm" disabled={actionLoading} onClick={() => handleHideFromLayout(p, witName, fieldName, info)}>Remove</button>
+                                          <button className="btn btn-sm" disabled={actionLoading} onClick={() => handleToggleVisibility(p, witName, fieldName, info)}>Hide</button>
+                                        </>
+                                      : info.onLayout && !info.layoutVisible
+                                      ? <>
+                                          <span className="badge badge-warning">Hidden</span>
+                                          <span className="text-sm text-secondary">{info.layoutGroupLabel}</span>
+                                          <button className="btn btn-sm btn-primary" disabled={actionLoading} onClick={() => handleToggleVisibility(p, witName, fieldName, info)}>Show</button>
                                         </>
                                       : <>
                                           <span className="badge badge-neutral">Not on Form</span>
@@ -623,6 +655,7 @@ function FieldsTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
                                           )}
                                         </>
                                     }
+                                    <button className="btn btn-sm btn-danger" disabled={actionLoading} onClick={() => handleRemoveField(p, witName, fieldName, info)} title="Remove field from work item type">Remove</button>
                                   </div>
                                 )}
                               </td>
@@ -991,10 +1024,20 @@ function BehaviorsTab({ comp, procs, processNames }) {
                 <div className="text-sm">
                   {diffs.map((d, i) => (
                     <div key={i} style={{ marginBottom: 4 }}>
-                      <strong>Behavior {d.behaviorId}:</strong>{' '}
-                      {Object.entries(d.values || {}).map(([pid, val]) => (
-                        <span key={pid} className="badge badge-neutral" style={{ margin: '0 2px' }}>
-                          {processNames[pid]}: {val ? JSON.stringify(val) : 'Not assigned'}
+                      <strong>{d.behaviorId}:</strong>{' '}
+                      {d.missingFrom?.length > 0 && (
+                        <span className="badge badge-danger" style={{ margin: '0 2px' }}>
+                          Missing from: {d.missingFrom.map((pid) => processNames[pid]).join(', ')}
+                        </span>
+                      )}
+                      {(d.propertyDifferences || []).map((pd, j) => (
+                        <span key={j} style={{ marginLeft: 4 }}>
+                          <strong>{pd.property}:</strong>{' '}
+                          {Object.entries(pd.values || {}).map(([pid, val]) => (
+                            <span key={pid} className="badge badge-neutral" style={{ margin: '0 2px' }}>
+                              {processNames[pid]}: {String(val ?? 'null')}
+                            </span>
+                          ))}
                         </span>
                       ))}
                     </div>
