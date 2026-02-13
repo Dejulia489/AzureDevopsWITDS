@@ -19,15 +19,13 @@ backend/  (Node.js, CommonJS, Express 4)
 
 frontend/  (React 19, Vite 6, ESM)
   vite.config.js         - Proxies /api/* to localhost:3001
-  src/App.jsx            - Root component with 4 tabs: Connections, Discovery, Comparison, Editor
+  src/App.jsx            - Root component with 3 tabs: Connections, Discovery, Comparison
   src/index.css          - Global CSS design system (Azure-themed, no component library)
   src/services/api.js    - HTTP client wrapping all backend routes
   src/components/
     ConnectionManager/   - Add/edit/delete/test connections with PAT masking
     ProcessDiscovery/    - Select connection, list processes, pull, select for compare
-    ProcessComparison/   - 5-tab visual diff (Summary, WITs, Fields, States, Behaviors)
-    ProcessEditor/       - Select process, edit WITs/fields/states, queue changes
-    ChangePreview/       - Modal showing dry-run preview, apply button, results view
+    ProcessComparison/   - 5-tab visual diff (Summary, WITs, Fields, States, Behaviors) with inline editing actions
 
 config/connections.json  - Persistent storage (contains PATs, gitignored content is sensitive)
 temp/                    - Session temp files (gitignored)
@@ -41,7 +39,8 @@ temp/                    - Session temp files (gitignored)
 - **CommonJS in backend** -- `require`/`module.exports`. The one exception is `node-fetch` v3 which is ESM-only, so `azureDevOps.js` uses dynamic `import('node-fetch')` inside `_fetch()`.
 - **ESM in frontend** -- standard Vite/React ESM modules.
 - **Comparison engine** is entirely server-side in `routes/comparison.js`. It loads pulled data from temp storage and runs pure JS comparison functions.
-- **Editor uses queued changes** -- the frontend accumulates changes locally, then sends them to `/api/editor/apply` in a single batch. Changes are applied in order: behaviors -> WITs -> fields -> states -> WIT behaviors.
+- **Inline editing on comparison screen** -- the ProcessComparison component provides inline actions (toggle field visibility, place fields on layout, create/delete WITs, add/remove fields and states) that call `editor.js` routes directly. The standalone Editor tab was removed.
+- **Editor backend still used** -- `routes/editor.js` is called by the comparison screen for direct edits (e.g. `editControl` PATCH for visibility toggles, `addControl` PUT for layout placement). The batch `apply`/`preview` endpoints remain available.
 - **Conflict handling** -- 409 on create = skip, 404 on delete/update = skip. Real errors are collected but don't stop the batch.
 
 ## Azure DevOps API
@@ -82,10 +81,11 @@ There are no automated tests yet. To test manually:
 2. Call it from `runComparison()` and include its diff count in the summary
 3. Add a new tab or section in `frontend/src/components/ProcessComparison/ProcessComparison.jsx`
 
-### Adding a new editor capability
-1. Add the queue/form logic in `ProcessEditor.jsx` (follow the field/state pattern)
-2. Include the new change type in the `changes` object structure
-3. Handle it in `backend/routes/editor.js` in both `preview` and `applyChanges()`
+### Adding a new inline editing action
+1. Add the handler in `ProcessComparison.jsx` calling the appropriate `editor.*` API method
+2. Add the backend route in `routes/editor.js` if it doesn't exist (follow existing direct-edit pattern)
+3. Add the API method in `services/azureDevOps.js` if needed
+4. Call `refreshTempStorage()` after the edit so comparison data stays current
 
 ### Modifying the UI design
 All CSS is in `frontend/src/index.css`. Key class groups:
