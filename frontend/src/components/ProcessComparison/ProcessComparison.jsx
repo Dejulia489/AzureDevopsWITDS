@@ -3,6 +3,15 @@ import { comparison as comparisonApi, editor, processes as processesApi } from '
 
 const TABS = ['Summary', 'Work Item Types', 'Fields', 'States', 'Behaviors'];
 
+function getOrgName(orgUrl) {
+  if (!orgUrl) return '';
+  try {
+    const url = new URL(orgUrl);
+    if (url.hostname === 'dev.azure.com') return url.pathname.split('/').filter(Boolean)[0] || '';
+    return url.hostname.split('.')[0] || '';
+  } catch { return ''; }
+}
+
 function StateCategoryBadge({ category }) {
   const cls = {
     Proposed: 'state-proposed',
@@ -53,7 +62,10 @@ export default function ProcessComparison({ comparisonResult, pulledProcesses, o
 
   const { processes: procs, comparison: comp } = comparisonResult;
   const processNames = {};
-  procs.forEach((p) => { processNames[p.processId] = p.processName; });
+  procs.forEach((p) => {
+    const org = getOrgName(p.orgUrl);
+    processNames[p.processId] = org ? `${p.processName} (${org})` : p.processName;
+  });
 
   const handleRecompare = async () => {
     setRecomparing(true);
@@ -86,7 +98,7 @@ export default function ProcessComparison({ comparisonResult, pulledProcesses, o
           <div>
             <h2 style={{ marginBottom: 4 }}>Process Comparison</h2>
             <div className="text-sm text-secondary">
-              Comparing {procs.length} processes: {procs.map((p) => p.processName).join(' vs ')}
+              Comparing {procs.length} processes: {procs.map((p) => processNames[p.processId]).join(' vs ')}
             </div>
           </div>
           <div className="btn-group">
@@ -196,7 +208,7 @@ function SummaryTab({ comp, procs, processNames }) {
           <tbody>
             {procs.map((p) => (
               <tr key={p.processId}>
-                <td><strong>{p.processName}</strong></td>
+                <td><strong>{processNames[p.processId]}</strong></td>
                 <td className="text-sm text-secondary">{p.orgUrl}</td>
                 <td>{(workItemTypes.byProcess[p.processId] || []).length}</td>
               </tr>
@@ -222,7 +234,7 @@ function WitTab({ comp, procs, processNames, notify, onRecompare }) {
         proc.connectionId, proc.processId, witInfo.referenceName,
         { isDisabled: !witInfo.isDisabled }
       );
-      notify('success', `${witName} ${witInfo.isDisabled ? 'enabled' : 'disabled'} in ${proc.processName}`);
+      notify('success', `${witName} ${witInfo.isDisabled ? 'enabled' : 'disabled'} in ${processNames[proc.processId]}`);
       await onRecompare();
     } catch (err) {
       notify('error', `Failed to toggle ${witName}: ${err.message}`);
@@ -241,7 +253,7 @@ function WitTab({ comp, procs, processNames, notify, onRecompare }) {
         targetProc.connectionId, targetProc.processId,
         { name: witName, color: sourceInfo.color || '009CCC', description: sourceInfo.description || '', icon: sourceInfo.icon || 'icon_clipboard' }
       );
-      notify('success', `Added "${witName}" to ${targetProc.processName}`);
+      notify('success', `Added "${witName}" to ${processNames[targetProc.processId]}`);
       await onRecompare();
     } catch (err) {
       notify('error', `Failed to add ${witName}: ${err.message}`);
@@ -282,7 +294,7 @@ function WitTab({ comp, procs, processNames, notify, onRecompare }) {
             <label>Target Process</label>
             <select value={createTargetKey} onChange={(e) => setCreateTargetKey(e.target.value)}>
               <option value="">-- Select process --</option>
-              {procs.map((p) => <option key={p.processId} value={`${p.connectionId}::${p.processId}`}>{p.processName}</option>)}
+              {procs.map((p) => <option key={p.processId} value={`${p.connectionId}::${p.processId}`}>{processNames[p.processId]}</option>)}
             </select>
           </div>
           <div className="form-row">
@@ -305,7 +317,7 @@ function WitTab({ comp, procs, processNames, notify, onRecompare }) {
             <tr>
               <th>#</th>
               <th>Work Item Type</th>
-              {procs.map((p) => <th key={p.processId}>{p.processName}</th>)}
+              {procs.map((p) => <th key={p.processId}>{processNames[p.processId]}</th>)}
               <th>Status</th>
             </tr>
           </thead>
@@ -359,6 +371,48 @@ function WitTab({ comp, procs, processNames, notify, onRecompare }) {
   );
 }
 
+function FieldInfoPopover({ fieldPerProc, procs, processNames, onClose }) {
+  // Show field properties from the first process that has it
+  const firstPid = procs.find((p) => fieldPerProc[p.processId])?.processId;
+  if (!firstPid) return null;
+  const info = fieldPerProc[firstPid];
+  return (
+    <div className="field-popover" onClick={(e) => e.stopPropagation()}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <strong style={{ fontSize: 13 }}>{info.name}</strong>
+        <button className="info-icon" onClick={onClose} title="Close" style={{ border: 'none', background: 'none', fontSize: 14, cursor: 'pointer' }}>&times;</button>
+      </div>
+      <dl style={{ margin: 0 }}>
+        <dt>Reference Name</dt>
+        <dd className="text-mono">{info.referenceName}</dd>
+        <dt>Type</dt>
+        <dd>{info.type || '--'}</dd>
+        {info.description && <><dt>Description</dt><dd>{info.description}</dd></>}
+        <dt>Required</dt>
+        <dd>{info.required ? 'Yes' : 'No'}</dd>
+        <dt>Read Only</dt>
+        <dd>{info.readOnly ? 'Yes' : 'No'}</dd>
+        {info.defaultValue != null && <><dt>Default Value</dt><dd>{String(info.defaultValue)}</dd></>}
+      </dl>
+      {procs.filter((p) => fieldPerProc[p.processId]).length > 1 && (
+        <div style={{ marginTop: 8, borderTop: '1px solid var(--color-border)', paddingTop: 6 }}>
+          <dt style={{ fontWeight: 600, color: 'var(--color-text-secondary)', fontSize: 11, marginBottom: 4 }}>Per-Process Layout</dt>
+          {procs.map((p) => {
+            const fi = fieldPerProc[p.processId];
+            if (!fi) return null;
+            return (
+              <div key={p.processId} style={{ fontSize: 11, marginBottom: 2 }}>
+                <strong>{processNames[p.processId]}:</strong>{' '}
+                {fi.onLayout ? (fi.layoutVisible ? `On Form (${fi.layoutGroupLabel || 'unknown group'})` : `Hidden (${fi.layoutGroupLabel || 'unknown group'})`) : 'Not on Form'}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FieldsTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecompare }) {
   const { fields } = comp;
   const [actionLoading, setActionLoading] = useState(false);
@@ -367,6 +421,7 @@ function FieldsTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
   const [addFieldWit, setAddFieldWit] = useState(null); // which WIT section has the add-field form open
   const [addFieldTarget, setAddFieldTarget] = useState(''); // connectionId::processId
   const [addFieldRef, setAddFieldRef] = useState(''); // selected org field referenceName
+  const [openInfoField, setOpenInfoField] = useState(null); // "witName::fieldName" key for open popover
 
   if (!fields?.byWorkItemType) return <div className="card"><p className="text-secondary">No field data available.</p></div>;
 
@@ -414,7 +469,7 @@ function FieldsTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
       await editor.editControl(proc.connectionId, proc.processId, witRefName, fieldInfo.layoutGroupId, fieldInfo.referenceName, {
         visible: newVisible,
       });
-      notify('success', `${newVisible ? 'Showing' : 'Hiding'} "${fieldName}" on form in ${proc.processName}`);
+      notify('success', `${newVisible ? 'Showing' : 'Hiding'} "${fieldName}" on form in ${processNames[proc.processId]}`);
       await onRecompare();
     } catch (err) {
       notify('error', `Failed to toggle visibility: ${err.message}`);
@@ -430,7 +485,7 @@ function FieldsTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
     setActionLoading(true);
     try {
       await editor.removeField(proc.connectionId, proc.processId, witRefName, fieldInfo.referenceName);
-      notify('success', `Removed "${fieldName}" from ${witName} in ${proc.processName}`);
+      notify('success', `Removed "${fieldName}" from ${witName} in ${processNames[proc.processId]}`);
       await onRecompare();
     } catch (err) {
       notify('error', `Failed to remove field: ${err.message}`);
@@ -460,7 +515,7 @@ function FieldsTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
         height: null,
         isContribution: false,
       });
-      notify('success', `Added "${fieldName}" to form layout in ${proc.processName}`);
+      notify('success', `Added "${fieldName}" to form layout in ${processNames[proc.processId]}`);
       setShowGroupPicker(null);
       setSelectedGroup('');
       await onRecompare();
@@ -482,7 +537,7 @@ function FieldsTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
     setActionLoading(true);
     try {
       await editor.addField(targetProc.connectionId, targetProc.processId, witRefName, { referenceName: sourceEntry.referenceName });
-      notify('success', `Added "${fieldName}" to ${witName} in ${targetProc.processName}`);
+      notify('success', `Added "${fieldName}" to ${witName} in ${processNames[targetProc.processId]}`);
       await onRecompare();
     } catch (err) {
       notify('error', `Failed to add field: ${err.message}`);
@@ -564,7 +619,7 @@ function FieldsTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
                       <label>Target Process</label>
                       <select value={addFieldTarget} onChange={(e) => { setAddFieldTarget(e.target.value); setAddFieldRef(''); }}>
                         <option value="">-- Select process --</option>
-                        {procs.map((p) => <option key={p.processId} value={`${p.connectionId}::${p.processId}`}>{p.processName}</option>)}
+                        {procs.map((p) => <option key={p.processId} value={`${p.connectionId}::${p.processId}`}>{processNames[p.processId]}</option>)}
                       </select>
                     </div>
                     <div className="form-group">
@@ -595,7 +650,7 @@ function FieldsTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
                   <thead>
                     <tr>
                       <th>Field</th>
-                      {procs.map((p) => <th key={p.processId}>{p.processName}</th>)}
+                      {procs.map((p) => <th key={p.processId}>{processNames[p.processId]}</th>)}
                       <th>Differences</th>
                     </tr>
                   </thead>
@@ -611,7 +666,27 @@ function FieldsTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
 
                       return (
                         <tr key={fieldName} className={hasDiff ? 'diff-changed' : hasLayoutMismatch ? 'diff-changed' : ''}>
-                          <td className="text-mono text-sm"><strong>{fieldName}</strong></td>
+                          <td className="text-mono text-sm" style={{ position: 'relative' }}>
+                            <div className="flex items-center gap-2">
+                              <strong>{fieldName}</strong>
+                              <span
+                                className="info-icon"
+                                title="View field details"
+                                onClick={() => setOpenInfoField(openInfoField === `${witName}::${fieldName}` ? null : `${witName}::${fieldName}`)}
+                              >i</span>
+                            </div>
+                            {openInfoField === `${witName}::${fieldName}` && (
+                              <>
+                                <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setOpenInfoField(null)} />
+                                <FieldInfoPopover
+                                  fieldPerProc={fieldPerProc}
+                                  procs={procs}
+                                  processNames={processNames}
+                                  onClose={() => setOpenInfoField(null)}
+                                />
+                              </>
+                            )}
+                          </td>
                           {procs.map((p) => {
                             const info = fieldPerProc[p.processId];
                             const isMissing = !info;
@@ -621,41 +696,48 @@ function FieldsTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
                             return (
                               <td key={p.processId} className={isMissing ? 'diff-removed' : ''}>
                                 {isMissing ? (
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="badge badge-danger">Missing</span>
-                                    <button className="btn btn-sm btn-primary" disabled={actionLoading} onClick={() => handleAddMissingField(p, witName, fieldName)}>Add</button>
+                                  <div className="field-cell">
+                                    <div className="field-cell-status"><span className="badge badge-danger">Missing</span></div>
+                                    <div className="field-cell-actions">
+                                      <button className="btn btn-sm btn-primary" disabled={actionLoading} onClick={() => handleAddMissingField(p, witName, fieldName)}>Add</button>
+                                    </div>
                                   </div>
                                 ) : (
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    {info.onLayout && info.layoutVisible
-                                      ? <>
-                                          <span className="badge badge-success">On Form</span>
-                                          <span className="text-sm text-secondary">{info.layoutGroupLabel}</span>
-                                          <button className="btn btn-sm" disabled={actionLoading} onClick={() => handleToggleVisibility(p, witName, fieldName, info)}>Hide</button>
-                                        </>
-                                      : info.onLayout && !info.layoutVisible
-                                      ? <>
-                                          <span className="badge badge-warning">Hidden</span>
-                                          <span className="text-sm text-secondary">{info.layoutGroupLabel}</span>
-                                          <button className="btn btn-sm btn-primary" disabled={actionLoading} onClick={() => handleToggleVisibility(p, witName, fieldName, info)}>Show</button>
-                                        </>
-                                      : <>
-                                          <span className="badge badge-neutral">Not on Form</span>
-                                          {isPickerOpen ? (
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                              <select value={selectedGroup} onChange={(e) => setSelectedGroup(e.target.value)} style={{ fontSize: '0.85em' }}>
+                                  <div className="field-cell">
+                                    <div className="field-cell-status">
+                                      {info.onLayout && info.layoutVisible
+                                        ? <>
+                                            <span className="badge badge-success">On Form</span>
+                                            <span className="text-sm text-secondary">{info.layoutGroupLabel}</span>
+                                          </>
+                                        : info.onLayout && !info.layoutVisible
+                                        ? <>
+                                            <span className="badge badge-warning">Hidden</span>
+                                            <span className="text-sm text-secondary">{info.layoutGroupLabel}</span>
+                                          </>
+                                        : <span className="badge badge-neutral">Not on Form</span>
+                                      }
+                                    </div>
+                                    <div className="field-cell-actions">
+                                      {info.onLayout && info.layoutVisible
+                                        ? <button className="btn btn-sm" disabled={actionLoading} onClick={() => handleToggleVisibility(p, witName, fieldName, info)}>Hide</button>
+                                        : info.onLayout && !info.layoutVisible
+                                        ? <button className="btn btn-sm btn-primary" disabled={actionLoading} onClick={() => handleToggleVisibility(p, witName, fieldName, info)}>Show</button>
+                                        : isPickerOpen ? (
+                                            <>
+                                              <select value={selectedGroup} onChange={(e) => setSelectedGroup(e.target.value)} style={{ fontSize: '0.85em', maxWidth: 140 }}>
                                                 <option value="">-- Group --</option>
                                                 {groups.map((g) => <option key={g.groupId} value={g.groupId}>{g.label}</option>)}
                                               </select>
-                                              <button className="btn btn-sm btn-primary" disabled={actionLoading || !selectedGroup} onClick={() => handleShowOnLayout(p, witName, fieldName, info, selectedGroup)}>Add</button>
-                                              <button className="btn btn-sm" onClick={() => { setShowGroupPicker(null); setSelectedGroup(''); }}>Cancel</button>
-                                            </div>
+                                              <button className="btn btn-sm btn-primary" disabled={actionLoading || !selectedGroup} onClick={() => handleShowOnLayout(p, witName, fieldName, info, selectedGroup)}>Place</button>
+                                              <button className="btn btn-sm" onClick={() => { setShowGroupPicker(null); setSelectedGroup(''); }}>X</button>
+                                            </>
                                           ) : (
                                             <button className="btn btn-sm btn-primary" disabled={actionLoading} onClick={() => { setShowGroupPicker(pickerKey); setSelectedGroup(''); }}>Show</button>
-                                          )}
-                                        </>
-                                    }
-                                    <button className="btn btn-sm btn-danger" disabled={actionLoading} onClick={() => handleRemoveField(p, witName, fieldName, info)} title="Remove field from work item type">Remove</button>
+                                          )
+                                      }
+                                      <button className="btn btn-sm btn-danger" disabled={actionLoading} onClick={() => handleRemoveField(p, witName, fieldName, info)} title="Remove field from work item type">Remove</button>
+                                    </div>
                                   </div>
                                 )}
                               </td>
@@ -727,7 +809,7 @@ function StatesTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
         stateCategory: sourceEntry.stateCategory || 'Proposed',
         order: sourceEntry.order,
       });
-      notify('success', `Added state "${stateName}" to ${witName} in ${targetProc.processName}`);
+      notify('success', `Added state "${stateName}" to ${witName} in ${processNames[targetProc.processId]}`);
       await onRecompare();
     } catch (err) {
       notify('error', `Failed to add state: ${err.message}`);
@@ -779,7 +861,7 @@ function StatesTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
         // Adjacent is system (can't PATCH it) — only move current into adjacent's slot
         await editor.updateState(proc.connectionId, proc.processId, witRefName, current.id, { order: adjacent.order });
       }
-      notify('success', `Reordered "${stateName}" in ${proc.processName}`);
+      notify('success', `Reordered "${stateName}" in ${processNames[proc.processId]}`);
       await onRecompare();
     } catch (err) {
       notify('error', `Failed to reorder state: ${err.message}`);
@@ -858,7 +940,7 @@ function StatesTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
                     <label>Target Process</label>
                     <select value={createTargetKey} onChange={(e) => setCreateTargetKey(e.target.value)}>
                       <option value="">-- Select process --</option>
-                      {procs.map((p) => <option key={p.processId} value={`${p.connectionId}::${p.processId}`}>{p.processName}</option>)}
+                      {procs.map((p) => <option key={p.processId} value={`${p.connectionId}::${p.processId}`}>{processNames[p.processId]}</option>)}
                     </select>
                   </div>
                   <div className="form-row">
@@ -888,7 +970,7 @@ function StatesTab({ comp, procs, processNames, filterDiffsOnly, notify, onRecom
                   <thead>
                     <tr>
                       <th>State</th>
-                      {procs.map((p) => <th key={p.processId}>{p.processName}</th>)}
+                      {procs.map((p) => <th key={p.processId}>{processNames[p.processId]}</th>)}
                       <th>Differences</th>
                     </tr>
                   </thead>
@@ -984,7 +1066,7 @@ function BehaviorsTab({ comp, procs, processNames }) {
             <thead>
               <tr>
                 <th>Behavior</th>
-                {procs.map((p) => <th key={p.processId}>{p.processName}</th>)}
+                {procs.map((p) => <th key={p.processId}>{processNames[p.processId]}</th>)}
               </tr>
             </thead>
             <tbody>

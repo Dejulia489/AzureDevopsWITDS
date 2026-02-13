@@ -166,8 +166,10 @@ function compareFields(processesData) {
           present: true,
           referenceName: fieldRef,
           name: field.name || ref,
+          description: field.description || '',
           required: field.required || false,
           readOnly: field.readOnly || false,
+          defaultValue: field.defaultValue ?? null,
           type: field.type || '',
           onLayout: !!ctrlInfo,
           layoutVisible: ctrlInfo ? ctrlInfo.visible : false,
@@ -193,7 +195,7 @@ function compareFields(processesData) {
 
       // Compare properties across processes where the field is present.
       // Skip metadata-only properties that always differ (e.g. url contains process-specific GUIDs).
-      const IGNORED_FIELD_PROPS = new Set(['url', 'customization', 'hidden', 'isLocked']);
+      const IGNORED_FIELD_PROPS = new Set(['url', 'customization', 'hidden', 'isLocked', 'description']);
       const propertyDifferences = [];
       if (presentIn.length > 1) {
         // Gather all property keys across every process copy of this field
