@@ -7,6 +7,7 @@ const connectionsRoutes = require('./routes/connections');
 const processesRoutes = require('./routes/processes');
 const comparisonRoutes = require('./routes/comparison');
 const editorRoutes = require('./routes/editor');
+const licensesRoutes = require('./routes/licenses');
 
 // File-based logging
 const LOG_FILE = path.join(__dirname, '..', 'server.log');
@@ -41,6 +42,7 @@ app.use('/api/connections', connectionsRoutes);
 app.use('/api/processes', processesRoutes);
 app.use('/api/comparison', comparisonRoutes);
 app.use('/api/editor', editorRoutes);
+app.use('/api/licenses', licensesRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);

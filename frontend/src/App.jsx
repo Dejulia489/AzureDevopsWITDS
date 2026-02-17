@@ -3,11 +3,13 @@ import { connections as connectionsApi, processes } from './services/api';
 import ConnectionManager from './components/ConnectionManager/ConnectionManager';
 import ProcessDiscovery from './components/ProcessDiscovery/ProcessDiscovery';
 import ProcessComparison from './components/ProcessComparison/ProcessComparison';
+import LicenseManager from './components/LicenseManager/LicenseManager';
 
 const TABS = [
   { id: 'connections', label: 'Connections' },
   { id: 'discovery', label: 'Discovery' },
   { id: 'comparison', label: 'Comparison' },
+  { id: 'licenses', label: 'Licenses' },
 ];
 
 export default function App() {
@@ -118,6 +120,12 @@ export default function App() {
             pulledProcesses={pulledProcesses}
             onCompare={handleComparisonDone}
             onProcessPulled={handleProcessPulled}
+            notify={notify}
+          />
+        )}
+        {activeTab === 'licenses' && (
+          <LicenseManager
+            connections={connections}
             notify={notify}
           />
         )}

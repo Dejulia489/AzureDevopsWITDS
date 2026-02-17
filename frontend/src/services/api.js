@@ -87,3 +87,11 @@ export const editor = {
   removeControl: (connId, procId, witRefName, groupId, controlId) =>
     request(`/editor/${connId}/${procId}/${witRefName}/control/${encodeURIComponent(groupId)}/${encodeURIComponent(controlId)}`, { method: 'DELETE' }),
 };
+
+// === Licenses ===
+export const licenses = {
+  getEntitlements: (connectionId) => request(`/licenses/${connectionId}`),
+  testAccess: (connectionId) => request(`/licenses/${connectionId}/test`, { method: 'POST' }),
+  updateLicense: (connectionId, userId, accessLevel) =>
+    request(`/licenses/${connectionId}/${userId}`, { method: 'PATCH', body: JSON.stringify({ accessLevel }) }),
+};

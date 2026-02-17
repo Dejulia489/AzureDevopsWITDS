@@ -44,6 +44,27 @@ class AzureDevOpsService {
   }
 
   /**
+   * Return the VSAEX API base URL for user entitlement endpoints.
+   * Transforms https://dev.azure.com/orgname -> https://vsaex.dev.azure.com/orgname
+   * Also handles legacy https://orgname.visualstudio.com format.
+   * @returns {string} VSAEX base URL
+   */
+  _getVsaexApiBase() {
+    const base = this.orgUrl.replace(/\/+$/, '');
+    try {
+      const url = new URL(base);
+      if (url.hostname === 'dev.azure.com') {
+        return `https://vsaex.dev.azure.com${url.pathname}`;
+      }
+      // Legacy: https://orgname.visualstudio.com -> https://vsaex.dev.azure.com/orgname
+      const orgName = url.hostname.split('.')[0];
+      return `https://vsaex.dev.azure.com/${orgName}`;
+    } catch {
+      return base;
+    }
+  }
+
+  /**
    * Internal fetch wrapper.
    *
    * - Dynamically imports node-fetch (ESM-only v3).
@@ -800,6 +821,81 @@ class AzureDevOpsService {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // User Entitlement endpoints  (api-version=7.1)
+  // Host: vsaex.dev.azure.com
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Fetch all user entitlements (licenses) from the organization.
+   * Handles continuation token pagination to retrieve all pages.
+   * @returns {Promise<{ items: Array, totalCount: number }>}
+   */
+  async getUserEntitlements() {
+    const vsaexBase = this._getVsaexApiBase();
+    let allItems = [];
+    let continuationToken = null;
+    let totalCount = 0;
+
+    do {
+      let url = `${vsaexBase}/_apis/userentitlements?api-version=7.1`;
+      if (continuationToken) {
+        url += `&continuationToken=${encodeURIComponent(continuationToken)}`;
+      }
+
+      const data = await this._fetch(url);
+      const items = data.items || data.members || data.value || [];
+      allItems = allItems.concat(items);
+      totalCount = data.totalCount || allItems.length;
+      continuationToken = data.continuationToken || null;
+    } while (continuationToken);
+
+    return { items: allItems, totalCount };
+  }
+
+  /**
+   * Test whether the PAT has access to the user entitlements API.
+   * Makes a minimal request (top=1) to verify the vso.memberentitlementmanagement scope.
+   * @returns {Promise<{ success: boolean, message: string }>}
+   */
+  /**
+   * Update a user's access level (license).
+   * Uses JSON Patch format per the Member Entitlement Management API.
+   * @param {string} userId - User GUID
+   * @param {object} accessLevel - New access level (accountLicenseType, licensingSource)
+   * @returns {Promise<object>} Patch response with operationResults
+   */
+  async updateUserEntitlement(userId, accessLevel) {
+    const vsaexBase = this._getVsaexApiBase();
+    const url = `${vsaexBase}/_apis/userentitlements/${userId}?api-version=7.1`;
+    return this._fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json-patch+json' },
+      body: JSON.stringify([
+        {
+          from: '',
+          op: 'replace',
+          path: '/accessLevel',
+          value: accessLevel,
+        },
+      ]),
+    });
+  }
+
+  async testLicenseAccess() {
+    try {
+      const vsaexBase = this._getVsaexApiBase();
+      const url = `${vsaexBase}/_apis/userentitlements?api-version=7.1&top=1`;
+      await this._fetch(url);
+      return { success: true, message: 'License API access confirmed (vso.memberentitlementmanagement scope)' };
+    } catch (err) {
+      return {
+        success: false,
+        message: `License API access failed. Ensure PAT has "Member Entitlement Management (Read)" scope. Error: ${err.message}`,
+      };
     }
   }
 }
